@@ -147,8 +147,31 @@ def breadthFirstSearch(problem: SearchProblem):
 
 def uniformCostSearch(problem: SearchProblem):
     """Search the node of least total cost first."""
-    "*** YOUR CODE HERE ***"
-    util.raiseNotDefined()
+    start_state = problem.getStartState()
+    frontier = util.PriorityQueue()
+    # Queue item: (state, actions, current_g)
+    frontier.push((start_state, [], 0), 0)
+    best_g = {start_state: 0}
+
+    while not frontier.isEmpty():
+        state, actions, current_g = frontier.pop()
+
+        # Guard against stale entries in the priority queue
+        if current_g > best_g.get(state, float('inf')):
+            continue
+
+        # Evaluate goal strictly upon popping for optimality
+        if problem.isGoalState(state):
+            return actions
+
+        for next_state, action, step_cost in problem.getSuccessors(state):
+            new_g = current_g + step_cost
+            # If a lower accumulated cost to next_state is found, re-enqueue
+            if next_state not in best_g or new_g < best_g[next_state]:
+                best_g[next_state] = new_g
+                frontier.push((next_state, actions + [action], new_g), new_g)
+
+    return []
 
 def nullHeuristic(state, problem=None):
     """
@@ -157,8 +180,62 @@ def nullHeuristic(state, problem=None):
     """
     return 0
 
+def greedyBestFirstSearch(problem: SearchProblem, heuristic=nullHeuristic):
+    """Search the node that has the lowest heuristic estimate first."""
+    start_state = problem.getStartState()
+    frontier = util.PriorityQueue()
+    # Queue item: (state, actions, current_g)
+    frontier.push((start_state, [], 0), heuristic(start_state, problem))
+    visited = set()
+
+    while not frontier.isEmpty():
+        state, actions, current_g = frontier.pop()
+
+        # Guard against expanding already visited states to prevent cycles
+        if state in visited:
+            continue
+        visited.add(state)
+
+        # Evaluate goal strictly upon popping
+        if problem.isGoalState(state):
+            return actions
+
+        for next_state, action, step_cost in problem.getSuccessors(state):
+            if next_state not in visited:
+                h_val = heuristic(next_state, problem)
+                frontier.push((next_state, actions + [action], current_g + step_cost), h_val)
+
+    return []
+
 def aStarSearch(problem: SearchProblem, heuristic=nullHeuristic):
     """Search the node that has the lowest combined cost and heuristic first."""
+    start_state = problem.getStartState()
+    frontier = util.PriorityQueue()
+    start_h = heuristic(start_state, problem)
+    # Queue item: (state, actions, current_g)
+    frontier.push((start_state, [], 0), start_h)
+    best_g = {start_state: 0}
+
+    while not frontier.isEmpty():
+        state, actions, current_g = frontier.pop()
+
+        # Guard against stale entries in the priority queue
+        if current_g > best_g.get(state, float('inf')):
+            continue
+
+        # Evaluate goal strictly upon popping for optimality
+        if problem.isGoalState(state):
+            return actions
+
+        for next_state, action, step_cost in problem.getSuccessors(state):
+            new_g = current_g + step_cost
+            # If a lower accumulated cost to next_state is found, re-enqueue
+            if next_state not in best_g or new_g < best_g[next_state]:
+                best_g[next_state] = new_g
+                priority = new_g + heuristic(next_state, problem)
+                frontier.push((next_state, actions + [action], new_g), priority)
+
+    return []
 
 
 # Abbreviations
@@ -166,3 +243,4 @@ bfs = breadthFirstSearch
 dfs = depthFirstSearch
 astar = aStarSearch
 ucs = uniformCostSearch
+gbfs = greedyBestFirstSearch
