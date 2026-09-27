@@ -453,37 +453,109 @@ class AStarFoodSearchAgent(SearchAgent):
         self.searchFunction = lambda prob: search.aStarSearch(prob, foodHeuristic)
         self.searchType = FoodSearchProblem
 
+def compute_all_maze_distances(walls):
+    """
+    Computes all-pairs shortest maze distances for every reachable open cell.
+    Returns a dictionary mapping (point1, point2) -> maze_distance.
+    """
+    width = walls.width
+    height = walls.height
+    open_cells = [(x, y) for x in range(width) for y in range(height) if not walls[x][y]]
+
+    dist_map = {}
+    for start in open_cells:
+        queue = [start]
+        visited = {start: 0}
+        head = 0
+        while head < len(queue):
+            curr = queue[head]
+            head += 1
+            curr_dist = visited[curr]
+            x, y = curr
+            for dx, dy in [(0, 1), (0, -1), (1, 0), (-1, 0)]:
+                nx, ny = x + dx, y + dy
+                if 0 <= nx < width and 0 <= ny < height and not walls[nx][ny]:
+                    neighbor = (nx, ny)
+                    if neighbor not in visited:
+                        visited[neighbor] = curr_dist + 1
+                        queue.append(neighbor)
+        for target, d in visited.items():
+            dist_map[(start, target)] = d
+    return dist_map
+
+
+def compute_mst_cost(food_list, dist_map):
+    """
+    Computes the Minimum Spanning Tree (MST) weight across a list of food positions
+    using Prim's algorithm with true maze distance edge weights.
+    """
+    n = len(food_list)
+    if n <= 1:
+        return 0
+    if n == 2:
+        return dist_map.get((food_list[0], food_list[1]),
+                            abs(food_list[0][0] - food_list[1][0]) + abs(food_list[0][1] - food_list[1][1]))
+
+    visited = [False] * n
+    visited[0] = True
+    min_edge = [
+        dist_map.get((food_list[0], food_list[i]),
+                     abs(food_list[0][0] - food_list[i][0]) + abs(food_list[0][1] - food_list[i][1]))
+        for i in range(n)
+    ]
+    total_weight = 0
+
+    for _ in range(n - 1):
+        best_d = float('inf')
+        best_u = -1
+        for i in range(1, n):
+            if not visited[i] and min_edge[i] < best_d:
+                best_d = min_edge[i]
+                best_u = i
+
+        visited[best_u] = True
+        total_weight += best_d
+        u_pos = food_list[best_u]
+
+        for i in range(1, n):
+            if not visited[i]:
+                d = dist_map.get((u_pos, food_list[i]),
+                                 abs(u_pos[0] - food_list[i][0]) + abs(u_pos[1] - food_list[i][1]))
+                if d < min_edge[i]:
+                    min_edge[i] = d
+
+    return total_weight
+
+
 def foodHeuristic(state: Tuple[Tuple, List[List]], problem: FoodSearchProblem):
     """
     Your heuristic for the FoodSearchProblem goes here.
 
-    This heuristic must be consistent to ensure correctness.  First, try to come
-    up with an admissible heuristic; almost all admissible heuristics will be
-    consistent as well.
-
-    If using A* ever finds a solution that is worse uniform cost search finds,
-    your heuristic is *not* consistent, and probably not admissible!  On the
-    other hand, inadmissible or inconsistent heuristics may find optimal
-    solutions, so be careful.
-
-    The state is a tuple ( pacmanPosition, foodGrid ) where foodGrid is a Grid
-    (see game.py) of either True or False. You can call foodGrid.asList() to get
-    a list of food coordinates instead.
-
-    If you want access to info like walls, capsules, etc., you can query the
-    problem.  For example, problem.walls gives you a Grid of where the walls
-    are.
-
-    If you want to *store* information to be reused in other calls to the
-    heuristic, there is a dictionary called problem.heuristicInfo that you can
-    use. For example, if you only want to count the walls once and store that
-    value, try: problem.heuristicInfo['wallCount'] = problem.walls.count()
-    Subsequent calls to this heuristic can access
-    problem.heuristicInfo['wallCount']
+    This heuristic is admissible and consistent. It calculates:
+      h(state) = min_dist_to_food + MST_cost(remaining_food)
+    where distances are true shortest-path maze distances precomputed
+    once on problem.walls and cached in problem.heuristicInfo.
     """
     position, foodGrid = state
-    "*** YOUR CODE HERE ***"
-    return 0
+    food_list = foodGrid.asList()
+    if not food_list:
+        return 0
+
+    # Precompute and cache all-pairs maze distances once
+    if 'dist_map' not in problem.heuristicInfo:
+        problem.heuristicInfo['dist_map'] = compute_all_maze_distances(problem.walls)
+    dist_map = problem.heuristicInfo['dist_map']
+
+    # Shortest maze distance from Pacman's current position to the closest food pellet
+    min_dist_to_food = min(
+        dist_map.get((position, f), abs(position[0] - f[0]) + abs(position[1] - f[1]))
+        for f in food_list
+    )
+
+    # Minimum Spanning Tree cost connecting all remaining food pellets
+    mst_cost = compute_mst_cost(food_list, dist_map)
+
+    return min_dist_to_food + mst_cost
 
 class ClosestDotSearchAgent(SearchAgent):
     "Search for all food using a sequence of searches"
@@ -513,8 +585,7 @@ class ClosestDotSearchAgent(SearchAgent):
         walls = gameState.getWalls()
         problem = AnyFoodSearchProblem(gameState)
 
-        "*** YOUR CODE HERE ***"
-        util.raiseNotDefined()
+        return search.bfs(problem)
 
 class AnyFoodSearchProblem(PositionSearchProblem):
     """
@@ -547,10 +618,8 @@ class AnyFoodSearchProblem(PositionSearchProblem):
         The state is Pacman's position. Fill this in with a goal test that will
         complete the problem definition.
         """
-        x,y = state
-
-        "*** YOUR CODE HERE ***"
-        util.raiseNotDefined()
+        x, y = state
+        return self.food[x][y]
 
 def mazeDistance(point1: Tuple[int, int], point2: Tuple[int, int], gameState: pacman.GameState) -> int:
     """
